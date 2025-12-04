@@ -7,7 +7,6 @@ export async function POST(request) {
     const body = await request.json();
     const { title, category, price, ...otherData } = body;
 
-    // --- Input Validation ---
     if (!title || !category || !price) {
         return NextResponse.json(
             { error: "Missing required fields: title, category, and price are required." },
@@ -23,7 +22,6 @@ export async function POST(request) {
 
     let product;
     try {
-        // --- Create Product in Primary Database ---
         product = await prisma.product.create({
             data: {
                 title,
@@ -33,26 +31,21 @@ export async function POST(request) {
             },
         });
 
-        // --- Push to Vector Database (with error handling) ---
-        // This is done after the primary DB write to ensure we have a valid product.
         await pushInVector(product);
 
-        // --- Success Response ---
         return NextResponse.json(product, { status: 201 });
 
     } catch (error) {
-        // --- Error Handling ---
+
         console.error("Failed to add product:", error);
 
-        // Handle unique constraint violation (e.g., duplicate product title)
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
             return NextResponse.json(
                 { error: "A product with this unique identifier already exists." },
-                { status: 409 } // 409 Conflict
+                { status: 409 } 
             );
         }
 
-        // Generic server error for any other issues
         return NextResponse.json(
             { error: "Internal Server Error: Could not add the product." },
             { status: 500 }

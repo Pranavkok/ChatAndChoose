@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-const genAI = new GoogleGenerativeAI("AIzaSyACYyICMgFq1ycNjyFZR4fs3FCCuNR1Wmc");
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API);
 
 export async function genarateFilter(prompt) {
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -20,6 +20,7 @@ Output must strictly follow this schema:{
   "brand": "",
   "color": "",
   "gender": "",
+  "size": "",
   "price_min": null,
   "price_max": null,
   "attributes": {}

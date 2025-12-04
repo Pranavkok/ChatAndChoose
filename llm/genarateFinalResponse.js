@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { fetchAllProducts } from "../vector-db/pushInVector";
-const genAI = new GoogleGenerativeAI("AIzaSyBvWN2E6oD2W7FLFtzmPAwkpvNEF1FvC-o");
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API);
 
 const systemMessage = `You are a friendly fashion and beauty shopping assistant. You help users find and buy clothing, accessories, cosmetics, skincare, and beauty products.`;
 const itemsWeHave =fetchAllProducts();

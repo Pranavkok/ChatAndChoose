@@ -8,7 +8,6 @@ import { freshPrompt } from "../../../../llm/genaratePromptResponse";
 function parseFilterResponse(raw) {
     let text = raw.trim();
 
-    // Strip Markdown code fences like ```json ... ```
     if (text.startsWith("```")) {
         text = text.replace(/^```[a-zA-Z]*\n?/, "").replace(/```$/, "").trim();
     }
@@ -26,20 +25,38 @@ export async function POST(request) {
         const filters = parseFilterResponse(raw);
 
         const maxprice = filters.price_max;
+        const for_gender = filters.gender;
         const resultArray = [];
 
         const productArray = await searchProducts(newPrompt);
         
-        for (const p of productArray) {
-            if (maxprice != null && p.metadata.price <= maxprice && p.score > 0.55) {
-                resultArray.push(p);
-            } else if (maxprice == null && p.score > 0.55 ) {
-                resultArray.push(p);
-            }
+        // for (const p of productArray) {
+        //     if (maxprice != null && p.metadata.price <= maxprice && p.score > 0.55) {
+        //         resultArray.push(p);
+        //     } else if (maxprice == null && p.score > 0.55 ) {
+        //         resultArray.push(p);
+        //     }
 
-            if (resultArray.length >= 5) {
-                break;
+        //     if (resultArray.length >= 5) {
+        //         break;
+        //     }
+        // }
+
+        for (const p of productArray) {
+            const genderOk =
+                for_gender === "" ||
+                p.metadata.gender?.toLowerCase() === for_gender.toLowerCase();
+        
+            const scoreOk = p.score > 0.55;
+  
+            const priceOk =
+                maxprice == null || p.metadata.price <= maxprice;
+        
+            if (genderOk && scoreOk && priceOk) {
+                resultArray.push(p);
             }
+        
+            if (resultArray.length >= 5) break;
         }
 
         const [promptRes, finalResponse] = await Promise.all([

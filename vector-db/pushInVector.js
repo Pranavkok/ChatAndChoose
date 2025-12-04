@@ -4,14 +4,14 @@ import { NextResponse } from "next/server.js";
 
 // Reuse clients across calls (avoid recreating on every request)
 const genAI = new GoogleGenerativeAI(
-  "AIzaSyACYyICMgFq1ycNjyFZR4fs3FCCuNR1Wmc"
+  process.env.GOOGLE_GENAI_API
 );
 const embeddingModel = genAI.getGenerativeModel({
   model: "text-embedding-004",
 });
 
 const pinecone = new Pinecone({
-  apiKey: "pcsk_r9Bk9_2UgxU8a8ReRUUoPv1b4rzJ3LQAYUZ3qK1pRwT5LfkdL4SGwkyZ5aoAeUS26f5wj",
+  apiKey: process.env.PINECONE_API_KEY,
 });
 const productsIndex = pinecone.index("products");
 
@@ -51,10 +51,12 @@ export async function pushInVector(product) {
         description: product.description,
         title: product.title,
         category: product.category,
+        gender: product.gender,
         price: product.price,
         image: product.image,
         color: product.color,
-        brand: product.brand
+        brand: product.brand,
+        size: product.size,
       }
     }
   ]);
@@ -83,7 +85,6 @@ async function getQueryEmbedding(query) {
 export async function searchProducts(queryText) {
   const trimmed = (queryText ?? "").trim();
   if (!trimmed) {
-    // Avoid wasting tokens when query is empty
     return [];
   }
 
@@ -94,7 +95,7 @@ export async function searchProducts(queryText) {
       vector: queryEmbedding,
       topK: 20,
       includeMetadata: true,
-      includeValues: false,
+      includeValues: false
     });
 
     console.log(results.matches);
@@ -137,4 +138,4 @@ export async function fetchAllProducts() {
   return allProducts;
 }
 
-fetchAllProducts();
+// fetchAllProducts();
