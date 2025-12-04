@@ -131,7 +131,7 @@ export default function Home() {
                     AI
                   </div>
                   <div className="w-full space-y-4 rounded-2xl bg-zinc-900/80 px-4 py-3 text-sm text-zinc-100 shadow-sm">
-                    {m.payload?.promptResponse !== undefined && m.payload?.products?.length > 0 && (
+                    {m.payload?.promptResponse !== undefined && m.payload?.products && m.payload.products.length > 0 && (
                       <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
                         <p className="text-xs uppercase tracking-wide text-zinc-500">
                           Summary
