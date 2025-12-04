@@ -26,4 +26,27 @@ export async function promptResponse(prompt, history = []) {
   return response.text().trim();
 }
 
+export async function freshPrompt(prompt,history=[]){
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const { response } = await model.generateContent(
+    `Rewrite the user's prompt into a clearer, more detailed, and context-aware version.
+
+User Prompt:
+"${prompt}"
+
+Chat History Context:
+${JSON.stringify(history)}
+
+Your task:
+- Keep the user's meaning intact.
+- Remove ambiguity.
+- Add missing details only if they are implied by the history.
+- Do NOT invent new information.
+- Make the rewritten prompt more specific, structured, and suitable for an LLM.
+- Output ONLY the rewritten prompt. No explanations.`
+  );
+  console.log(response.text().trim());
+  return response.text().trim();
+}
+
 // genarateFilter("I want to buy a cheetah print shirt for my son under 1000");

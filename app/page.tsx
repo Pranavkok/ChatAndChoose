@@ -41,8 +41,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: FormEvent) {
+    e?.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
 
@@ -131,7 +131,7 @@ export default function Home() {
                     AI
                   </div>
                   <div className="w-full space-y-4 rounded-2xl bg-zinc-900/80 px-4 py-3 text-sm text-zinc-100 shadow-sm">
-                    {m.payload?.promptResponse && (
+                    {m.payload?.promptResponse !== undefined && m.payload?.products?.length > 0 && (
                       <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
                         <p className="text-xs uppercase tracking-wide text-zinc-500">
                           Summary
@@ -257,6 +257,12 @@ export default function Home() {
               placeholder="Describe what you want to buy..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();   // block newline
+                  handleSubmit();       // trigger submit
+                }
+              }}
             />
             <button
               type="submit"

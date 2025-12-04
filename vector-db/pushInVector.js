@@ -106,33 +106,35 @@ export async function searchProducts(queryText) {
   }
 }
 
-// searchProducts("i want to listen music")
+export async function fetchAllProducts() {
+  const allProducts = [];
+  let nextToken = undefined;
 
-// const xyz = {
-//     "id": 12,
-//     "category": "Accessories",
-//     "title": "Unisex Adjustable Cap",
-//     "description": "Simple and stylish cap for everyday use.",
-//     "specification": "Adjustable strap, cotton blend",
-//     "price": 12,
-//     "image": "https://example.com/images/cap.jpg",
-//     "brand": "DailyFit",
-//     "gender": "Unisex",
-//     "size": "One Size",
-//     "color": "Grey",
-//     "material": "Cotton",
-//     "style": "Casual",
-//     "pattern": "Solid",
-//     "fit": "Regular",
-//     "length": "Short",
-//     "sleeve": "None",
-//     "createdAt": "2025-12-01T10:48:22.919Z",
-//     "updatedAt": "2025-12-01T10:48:22.919Z"
-// }
+  do {
+    const listResponse = await productsIndex.listPaginated({
+      limit: 100,
+      prefix: "",
+      paginationToken: nextToken
+    });
 
-// pushInVector(xyz);
+    const ids = listResponse.vectors.map(v => v.id);
 
+    if (ids.length > 0) {
+      const fetchRes = await productsIndex.fetch(ids);
 
-// const res = product.stringify();const res = JSON.stringify(product);
+      Object.entries(fetchRes.records).forEach(([id, record]) => {
+        allProducts.push({
+          id,
+          ...record.metadata
+        });
+      });
+    }
 
-// main();
+    nextToken = listResponse.paginationToken;
+  } while (nextToken);
+
+  console.log(`Fetched ${allProducts.length} products from vector DB`);
+  return allProducts;
+}
+
+fetchAllProducts();

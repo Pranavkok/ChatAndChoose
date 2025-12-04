@@ -30,5 +30,3 @@ here is the prompt given by the user : ${prompt}
   console.log(response.text().trim());
   return response.text().trim();
 }
-
-// genarateFilter("I want to buy a cheetah print shirt for my son under 1000");

@@ -1,43 +1,34 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 
-// Reuse a single Pinecone client and index
-const pinecone = new Pinecone({
-  apiKey: "pcsk_r9Bk9_2UgxU8a8ReRUUoPv1b4rzJ3LQAYUZ3qK1pRwT5LfkdL4SGwkyZ5aoAeUS26f5wj",
-});
-const productsIndex = pinecone.index("products");
+// --- Configuration ---
+const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
+const PINECONE_INDEX_NAME = process.env.PINECONE_INDEX_NAME || "products";
 
+// --- Client Initialization ---
+if (!PINECONE_API_KEY) {
+  throw new Error("Missing PINECONE_API_KEY environment variable.");
+}
+
+const pinecone = new Pinecone({ apiKey: PINECONE_API_KEY });
+const productsIndex = pinecone.index(PINECONE_INDEX_NAME);
+
+/**
+ * Removes a product from the Pinecone vector database by its ID.
+ * @param {string | number} productId - The ID of the product to remove.
+ * @returns {Promise<void>}
+ * @throws {Error} If the productId is invalid or the deletion fails.
+ */
 export async function removeFromVector(productId) {
   const id = String(productId ?? "").trim();
   if (!id) {
-    console.warn("removeFromVector called without a valid productId");
-    return { success: false, message: "productId is required" };
+    throw new Error("removeFromVector called without a valid productId.");
   }
 
   try {
     await productsIndex.deleteOne(id);
-    console.log(`Product ${id} removed from vector database`);
-    return { success: true, message: `Product ${id} removed from vector database` };
   } catch (error) {
-    console.error("Error removing product from vector database:", error);
-    return { success: false, message: "Failed to remove product from vector database" };
+    console.error(`Error removing product ${id} from vector database:`, error);
+    // Re-throw the error to be handled by the calling function
+    throw new Error(`Failed to remove product ${id} from vector database.`);
   }
 }
-
-
-// export async function removeMultipleFromVector(productIds) {
-//   const pc = new Pinecone({
-//     apiKey: process.env.PINECONE_API_KEY || "pcsk_r9Bk9_2UgxU8a8ReRUUoPv1b4rzJ3LQAYUZ3qK1pRwT5LfkdL4SGwkyZ5aoAeUS26f5wj"
-//   });
-//   const index = pc.index("products");
-
-//   try {
-//     const stringIds = productIds.map(id => String(id));
-//     await index.deleteMany(stringIds);
-//     console.log(`Products ${stringIds.join(", ")} removed from vector database`);
-//     return { success: true, message: `Products removed from vector database` };
-//   } catch (error) {
-//     console.error("Error removing products from vector database:", error);
-//     throw error;
-//   }
-// }
-
