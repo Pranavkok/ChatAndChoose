@@ -26,27 +26,33 @@ export async function promptResponse(prompt, history = []) {
   return response.text().trim();
 }
 
-export async function freshPrompt(prompt,history=[]){
+export async function freshPrompt(prompt, history = []) {
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  const { response } = await model.generateContent(
-    `Rewrite the user's prompt into a clearer, more detailed, and context-aware version.
 
-User Prompt:
-"${prompt}"
+  const promptText = `
+You generate a single improved search query that will be embedded and matched against product embeddings.
 
-Chat History Context:
-${JSON.stringify(history)}
+Inputs:
+- "history": ${JSON.stringify(history)}
+- "prompt": "${prompt}"
 
-Your task:
-- Keep the user's meaning intact.
-- Remove ambiguity.
-- Add missing details only if they are implied by the history.
-- Do NOT invent new information.
-- Make the rewritten prompt more specific, structured, and suitable for an LLM.
-- Output ONLY the rewritten prompt. No explanations.`
-  );
-  console.log(response.text().trim());
+Rules:
+1. Merge relevant information from history with the latest prompt.
+2. If history contains details like gender, style, category, previous preferences, size, or color, include them.
+3. Never invent new details.
+4. Preserve the user's intent exactly.
+5. Produce a single-line search query that focuses on the product the user is trying to find.
+6. The output should match the structure of the product embeddings, which include:
+   title, description, color, category, gender, style, fit, pattern,
+   material, specification, sleeve, length, size, brand, price.
+
+Output:
+ONLY return the merged, context-aware query as a single clean line. No explanations.
+  `;
+
+  const { response } = await model.generateContent(promptText);
   return response.text().trim();
 }
+
 
 // genarateFilter("I want to buy a cheetah print shirt for my son under 1000");

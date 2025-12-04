@@ -3,6 +3,7 @@ import { genarateFilter } from "../../../../llm/genarateFilter";
 import { searchProducts } from "../../../../vector-db/pushInVector";
 import { productDetails } from "../../../../llm/genarateFinalResponse";
 import { promptResponse } from "../../../../llm/genaratePromptResponse";
+import { freshPrompt } from "../../../../llm/genaratePromptResponse";
 
 function parseFilterResponse(raw) {
     let text = raw.trim();
@@ -18,20 +19,21 @@ function parseFilterResponse(raw) {
 export async function POST(request) {
     try {
         const { prompt , history} = await request.json();
+        const newPrompt = await freshPrompt(prompt);
 
-        const raw = await genarateFilter(prompt);
+        const raw = await genarateFilter(newPrompt);
         console.log(raw);
         const filters = parseFilterResponse(raw);
 
         const maxprice = filters.price_max;
         const resultArray = [];
 
-        const productArray = await searchProducts(prompt);
+        const productArray = await searchProducts(newPrompt);
         
         for (const p of productArray) {
-            if (maxprice != null && p.metadata.price <= maxprice && p.score > 0.5) {
+            if (maxprice != null && p.metadata.price <= maxprice && p.score > 0.55) {
                 resultArray.push(p);
-            } else if (maxprice == null && p.score > 0.5 ) {
+            } else if (maxprice == null && p.score > 0.55 ) {
                 resultArray.push(p);
             }
 
@@ -42,7 +44,7 @@ export async function POST(request) {
 
         const [promptRes, finalResponse] = await Promise.all([
             promptResponse(prompt,history),
-            resultArray.length > 0 ? productDetails(resultArray) : "There are no relatable Products "
+            productDetails(resultArray,prompt,history)
         ]);
 
         return NextResponse.json({
