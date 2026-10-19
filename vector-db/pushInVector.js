@@ -2,19 +2,33 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { NextResponse } from "next/server.js";
 
-// Reuse clients across calls (avoid recreating on every request)
-const genAI = new GoogleGenerativeAI(
-  process.env.GOOGLE_GENAI_API
-);
-const embeddingModel = genAI.getGenerativeModel({
-  model: "text-embedding-004",
-});
+let embeddingModel = null;
+function getEmbeddingModel() {
+  if (!embeddingModel) {
+    const apiKey = process.env.GOOGLE_GENAI_API;
+    if (!apiKey) {
+      throw new Error("Missing GOOGLE_GENAI_API key");
+    }
+    const genAI = new GoogleGenerativeAI(apiKey);
+    embeddingModel = genAI.getGenerativeModel({
+      model: "text-embedding-004",
+    });
+  }
+  return embeddingModel;
+}
 
-const pinecone = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY,
-});
-const productsIndex = pinecone.index("products");
-
+let productsIndex = null;
+function getProductsIndex() {
+  if (!productsIndex) {
+    const apiKey = process.env.PINECONE_API_KEY;
+    if (!apiKey) {
+      throw new Error("Missing PINECONE_API_KEY environment variable.");
+    }
+    const pinecone = new Pinecone({ apiKey });
+    productsIndex = pinecone.index(process.env.PINECONE_INDEX_NAME || "products");
+  }
+  return productsIndex;
+}
 
 function buildSemanticText(product) {
   return `
@@ -31,19 +45,19 @@ function buildSemanticText(product) {
 }
 
 export async function pushInVector(product) {
-
   const productString = buildSemanticText(product);
+  const model = getEmbeddingModel();
 
-  const response = await embeddingModel.embedContent({
+  const response = await model.embedContent({
     content: {
       parts: [{ text: productString }],
     },
   });
 
-  console.log(response.embedding.values);
   const embedding = response.embedding.values;
+  const index = getProductsIndex();
 
-  await productsIndex.upsert([
+  await index.upsert([
     {
       id: String(product.id),
       values: embedding,
@@ -64,7 +78,7 @@ export async function pushInVector(product) {
   return NextResponse.json(
     { message: "Product Push success" },
     { status: 200 }
-);
+  );
 }
 
 async function getQueryEmbedding(query) {
@@ -74,8 +88,9 @@ async function getQueryEmbedding(query) {
   }
 
   try {
-    const res = await embeddingModel.embedContent(trimmed);
-    return res.embedding.values; // float array
+    const model = getEmbeddingModel();
+    const res = await model.embedContent(trimmed);
+    return res.embedding.values;
   } catch (err) {
     console.error("Error generating query embedding:", err);
     throw err;
@@ -90,15 +105,14 @@ export async function searchProducts(queryText) {
 
   try {
     const queryEmbedding = await getQueryEmbedding(trimmed);
+    const index = getProductsIndex();
 
-    const results = await productsIndex.query({
+    const results = await index.query({
       vector: queryEmbedding,
       topK: 20,
       includeMetadata: true,
       includeValues: false
     });
-
-    console.log(results.matches);
 
     return results.matches || [];
   } catch (err) {
@@ -111,31 +125,35 @@ export async function fetchAllProducts() {
   const allProducts = [];
   let nextToken = undefined;
 
-  do {
-    const listResponse = await productsIndex.listPaginated({
-      limit: 100,
-      prefix: "",
-      paginationToken: nextToken
-    });
-
-    const ids = listResponse.vectors.map(v => v.id);
-
-    if (ids.length > 0) {
-      const fetchRes = await productsIndex.fetch(ids);
-
-      Object.entries(fetchRes.records).forEach(([id, record]) => {
-        allProducts.push({
-          id,
-          ...record.metadata
-        });
+  try {
+    const index = getProductsIndex();
+    do {
+      const listResponse = await index.listPaginated({
+        limit: 100,
+        prefix: "",
+        paginationToken: nextToken
       });
-    }
 
-    nextToken = listResponse.paginationToken;
-  } while (nextToken);
+      const ids = listResponse.vectors.map(v => v.id);
 
-  console.log(`Fetched ${allProducts.length} products from vector DB`);
-  return allProducts;
+      if (ids.length > 0) {
+        const fetchRes = await index.fetch(ids);
+
+        Object.entries(fetchRes.records).forEach(([id, record]) => {
+          allProducts.push({
+            id,
+            ...record.metadata
+          });
+        });
+      }
+
+      nextToken = listResponse.paginationToken;
+    } while (nextToken);
+
+    console.log(`Fetched ${allProducts.length} products from vector DB`);
+    return allProducts;
+  } catch (err) {
+    console.error("Error fetching all products:", err);
+    return [];
+  }
 }
-
-// fetchAllProducts();

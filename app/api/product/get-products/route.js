@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { generateQueryAndFilters } from "../../../../llm/genarateFilter";
 import { searchProducts, fetchAllProducts } from "../../../../vector-db/pushInVector";
