@@ -1,12 +1,18 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API);
+function getGenAI() {
+  const key = process.env.GOOGLE_GENAI_API || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!key) {
+    throw new Error("Missing Gemini API Key. Please set GOOGLE_GENAI_API or GEMINI_API_KEY in your environment variables.");
+  }
+  return new GoogleGenerativeAI(key);
+}
 
 /**
  * Single LLM call: merges freshPrompt + genarateFilter into one call.
  * Returns { enhancedQuery, filters } — saves one full round-trip.
  */
 export async function generateQueryAndFilters(prompt, history = []) {
-  // Use flash-lite for speed — filter extraction is simple structured output
+  const genAI = getGenAI();
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   const historySnippet =

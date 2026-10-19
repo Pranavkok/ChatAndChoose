@@ -5,9 +5,9 @@ import { NextResponse } from "next/server.js";
 let embeddingModel = null;
 function getEmbeddingModel() {
   if (!embeddingModel) {
-    const apiKey = process.env.GOOGLE_GENAI_API;
+    const apiKey = process.env.GOOGLE_GENAI_API || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!apiKey) {
-      throw new Error("Missing GOOGLE_GENAI_API key");
+      throw new Error("Missing Gemini API key (GOOGLE_GENAI_API or GEMINI_API_KEY)");
     }
     const genAI = new GoogleGenerativeAI(apiKey);
     embeddingModel = genAI.getGenerativeModel({

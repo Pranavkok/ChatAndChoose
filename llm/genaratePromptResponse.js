@@ -1,11 +1,18 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API);
+function getGenAI() {
+  const key = process.env.GOOGLE_GENAI_API || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!key) {
+    throw new Error("Missing Gemini API Key. Please set GOOGLE_GENAI_API or GEMINI_API_KEY in your environment variables.");
+  }
+  return new GoogleGenerativeAI(key);
+}
 
 /**
  * Generates a short, contextual chat response (shown above product cards).
  * Uses gemini-2.0-flash for speed.
  */
 export async function promptResponse(prompt, history = []) {
+  const genAI = getGenAI();
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   const recentHistory =

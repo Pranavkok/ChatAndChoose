@@ -222,8 +222,11 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: text, history }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("API error response:", data);
+        throw new Error(data?.error || `Server error (${res.status})`);
+      }
 
       const reply: ChatMessage = {
         role: "assistant",
@@ -241,10 +244,11 @@ export default function Home() {
         { role: "user", content: text },
         { role: "assistant", content: data.promptResponse ?? data.formattedResponse ?? "" },
       ]);
-    } catch {
-      const err = "Something went wrong. Please try again.";
-      setMessages((p) => [...p.slice(0, -1), { role: "assistant", content: err }]);
-      setHistory((p) => [...p, { role: "user", content: text }, { role: "assistant", content: err }]);
+    } catch (err: unknown) {
+      console.error("Chat request failed:", err);
+      const errMsg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      setMessages((p) => [...p.slice(0, -1), { role: "assistant", content: errMsg }]);
+      setHistory((p) => [...p, { role: "user", content: text }, { role: "assistant", content: errMsg }]);
     } finally {
       setIsLoading(false);
     }
