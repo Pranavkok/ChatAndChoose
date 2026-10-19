@@ -80,19 +80,29 @@ export async function POST(request) {
       console.warn("Search/Inventory fetch error:", searchErr?.message);
     }
 
-    // STEP 3: Filter results
-    const maxprice = filters?.price_max ?? null;
-    const minprice = filters?.price_min ?? null;
+    // STEP 3: Multi-pass filter results
+    const maxprice = filters?.price_max != null ? Number(filters.price_max) : null;
+    const minprice = filters?.price_min != null ? Number(filters.price_min) : null;
     const forGender = (filters?.gender ?? "").toLowerCase();
-    const resultArray = [];
+    let resultArray = [];
 
+    const isGenderMatch = (meta) => {
+      if (!forGender) return true;
+      const g = (meta?.gender || "").toLowerCase();
+      if (!g || g === "unisex") return true;
+      return g.includes(forGender) || forGender.includes(g);
+    };
+
+    // Pass 1: Strict match (gender + price budget + score threshold)
     for (const p of (productArray || [])) {
       const meta = p.metadata || {};
-      const genderOk = !forGender || meta.gender?.toLowerCase()?.includes(forGender) || forGender.includes(meta.gender?.toLowerCase() || "");
-      const scoreOk = (p.score ?? 1) > 0.35; // relaxed score threshold
+      const genderOk = isGenderMatch(meta);
+      const scoreOk = (p.score ?? 1) > 0.25;
+      const numPrice = Number(meta.price);
       const priceOk =
-        (maxprice == null || meta.price <= maxprice) &&
-        (minprice == null || meta.price >= minprice);
+        isNaN(numPrice) ||
+        ((maxprice == null || numPrice <= maxprice) &&
+         (minprice == null || numPrice >= minprice));
 
       if (genderOk && scoreOk && priceOk) {
         resultArray.push(p);
@@ -100,7 +110,23 @@ export async function POST(request) {
       if (resultArray.length >= 6) break;
     }
 
-    // STEP 3b: Fallback to relational DB if vector DB returned no items
+    // Pass 2: Relax price restriction if strict budget filter eliminated all items
+    if (resultArray.length === 0 && (productArray || []).length > 0) {
+      for (const p of productArray) {
+        const meta = p.metadata || {};
+        if (isGenderMatch(meta) && (p.score ?? 1) > 0.25) {
+          resultArray.push(p);
+        }
+        if (resultArray.length >= 6) break;
+      }
+    }
+
+    // Pass 3: Take top vector semantic matches if still empty
+    if (resultArray.length === 0 && (productArray || []).length > 0) {
+      resultArray = productArray.slice(0, 6);
+    }
+
+    // Pass 4: Fallback to relational DB if vector DB returned no items
     if (resultArray.length === 0) {
       try {
         let dbProducts = [];
@@ -136,7 +162,7 @@ export async function POST(request) {
     }
 
     // STEP 4: Generate chat response + rich product response
-    let promptRes = "Here are the top recommendations from our collection:";
+    let promptRes = "Here are our recommendations:";
     let finalResponse = "";
 
     try {
@@ -163,6 +189,10 @@ export async function POST(request) {
       products: resultArray,
       formattedResponse: finalResponse,
       promptResponse: promptRes,
+      debug: {
+        vectorCount: (productArray || []).length,
+        resultCount: resultArray.length,
+      },
     });
   } catch (error) {
     console.error("get-products unhandled error:", error);
