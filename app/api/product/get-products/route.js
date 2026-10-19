@@ -36,7 +36,25 @@ export async function POST(request) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    // STEP 1: Single LLM call → enhancedQuery + filters (with safe fallback)
+    // 0. Environment check — notify immediately if critical keys are missing
+    const geminiKey = process.env.GOOGLE_GENAI_API || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    const pineconeKey = process.env.PINECONE_API_KEY;
+    const dbUrl = process.env.DATABASE_URL;
+
+    const missingKeys = [];
+    if (!geminiKey) missingKeys.push("GOOGLE_GENAI_API (or GEMINI_API_KEY)");
+    if (!pineconeKey) missingKeys.push("PINECONE_API_KEY");
+    if (!dbUrl) missingKeys.push("DATABASE_URL");
+
+    if (missingKeys.length > 0) {
+      return NextResponse.json({
+        products: [],
+        formattedResponse: `⚠️ Configuration Notice: Missing environment variables on Vercel:\n\n• ${missingKeys.join("\n• ")}\n\nPlease add them in your Vercel Project Settings → Environment Variables.`,
+        promptResponse: "Missing configuration keys",
+      });
+    }
+
+    // STEP 1: Extract query and filters
     let enhancedQuery = prompt;
     let filters = {};
     try {
@@ -52,7 +70,10 @@ export async function POST(request) {
     let inventory = [];
     try {
       [productArray, inventory] = await Promise.all([
-        searchProducts(enhancedQuery).catch(() => []),
+        searchProducts(enhancedQuery).catch((err) => {
+          console.error("searchProducts error:", err?.message);
+          return [];
+        }),
         getCachedInventory().catch(() => []),
       ]);
     } catch (searchErr) {
@@ -67,8 +88,8 @@ export async function POST(request) {
 
     for (const p of (productArray || [])) {
       const meta = p.metadata || {};
-      const genderOk = !forGender || meta.gender?.toLowerCase() === forGender;
-      const scoreOk = (p.score ?? 1) > 0.45;
+      const genderOk = !forGender || meta.gender?.toLowerCase()?.includes(forGender) || forGender.includes(meta.gender?.toLowerCase() || "");
+      const scoreOk = (p.score ?? 1) > 0.35; // relaxed score threshold
       const priceOk =
         (maxprice == null || meta.price <= maxprice) &&
         (minprice == null || meta.price >= minprice);
@@ -82,10 +103,16 @@ export async function POST(request) {
     // STEP 3b: Fallback to relational DB if vector DB returned no items
     if (resultArray.length === 0) {
       try {
-        const dbProducts = await prisma.product.findMany({
-          take: 6,
-          where: forGender ? { gender: { equals: forGender, mode: "insensitive" } } : undefined,
-        });
+        let dbProducts = [];
+        if (forGender) {
+          dbProducts = await prisma.product.findMany({
+            take: 6,
+            where: { gender: { contains: forGender, mode: "insensitive" } },
+          });
+        }
+        if (dbProducts.length === 0) {
+          dbProducts = await prisma.product.findMany({ take: 6 });
+        }
         for (const p of dbProducts) {
           resultArray.push({
             id: String(p.id),
@@ -104,11 +131,11 @@ export async function POST(request) {
           });
         }
       } catch (dbErr) {
-        console.warn("Prisma fallback error:", dbErr?.message);
+        console.error("Prisma fallback error:", dbErr?.message);
       }
     }
 
-    // STEP 4: Parallel — generate chat response + rich product response
+    // STEP 4: Generate chat response + rich product response
     let promptRes = "Here are the top recommendations from our collection:";
     let finalResponse = "";
 
@@ -119,16 +146,17 @@ export async function POST(request) {
           return "Here are the top recommendations from our collection:";
         }),
         productDetails(resultArray, prompt, history, inventory).catch((err) => {
-          console.warn("productDetails fallback:", err?.message);
+          console.error("productDetails error:", err?.message);
           return resultArray.length > 0
             ? `Found ${resultArray.length} items from our catalog.`
-            : "No items currently match your search. Try searching for shirts, dresses, shoes, or bags.";
+            : `We couldn't find any items matching "${prompt}" in the current catalog.`;
         }),
       ]);
       promptRes = pRes || promptRes;
       finalResponse = fRes;
     } catch (llmFinalErr) {
       console.warn("Final LLM generation error:", llmFinalErr?.message);
+      finalResponse = `Found ${resultArray.length} items from our catalog.`;
     }
 
     return NextResponse.json({
