@@ -1,283 +1,401 @@
 "use client";
 
-import { url } from "inspector";
 import Image from "next/image";
-import { FormEvent, useState } from "react";
-import Link from "next/link";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
-type HistoryEntry = {
-  role: "user" | "assistant";
-  content: string;
+// ── Types ─────────────────────────────────────────────────────────────────────
+type HistoryEntry = { role: "user" | "assistant"; content: string };
+
+type Product = {
+  id: string;
+  score?: number;
+  metadata?: {
+    title?: string;
+    category?: string;
+    price?: number | string;
+    description?: string;
+    image?: string;
+    gender?: string;
+    brand?: string;
+    color?: string;
+  };
 };
 
 type ChatMessage =
-  | {
-      role: "user";
-      content: string;
-    }
+  | { role: "user"; content: string }
   | {
       role: "assistant";
       content?: string;
+      isLoading?: boolean;
       payload?: {
         formattedResponse?: string;
         promptResponse?: string;
-        products?: Array<{
-          id: string;
-          metadata?: Record<string, unknown>;
-          [key: string]: unknown;
-        }>;
+        products?: Product[];
       };
     };
 
+// ── Quick searches ────────────────────────────────────────────────────────────
+const CHIPS = [
+  "Casual shirts for men",
+  "Summer dresses under ₹2000",
+  "White sneakers",
+  "Office bag for women",
+  "Skincare for dry skin",
+];
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+const IconSend = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 8H2M9 3l5 5-5 5" />
+  </svg>
+);
+
+const IconSpinner = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="M8 1v3M8 12v3M3.05 3.05l2.12 2.12M10.83 10.83l2.12 2.12M1 8h3M12 8h3M3.05 12.95l2.12-2.12M10.83 5.17l2.12-2.12"
+      style={{ animation: "spin 1s linear infinite" }} />
+  </svg>
+);
+
+const IconPlus = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="M8 3v10M3 8h10" />
+  </svg>
+);
+
+const IconBrandMark = () => (
+  <svg viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 2L10.5 6.5H14L10.5 9.5L12 14L8 11.5L4 14L5.5 9.5L2 6.5H5.5L8 2Z" />
+  </svg>
+);
+
+// ── Product card ──────────────────────────────────────────────────────────────
+function ProductCard({ product }: { product: Product }) {
+  const m = product.metadata ?? {};
+  const title = m.title ?? `Item ${product.id}`;
+  const price = m.price;
+  const category = m.category;
+  const hasImg = typeof m.image === "string" && m.image.trim().length > 0;
+
+  const categoryIcon: Record<string, string> = {
+    clothing: "◻",
+    shoes: "◻",
+    footwear: "◻",
+    bags: "◻",
+    beauty: "◻",
+    skincare: "◻",
+    accessories: "◻",
+  };
+  const iconKey = Object.keys(categoryIcon).find((k) =>
+    category?.toLowerCase().includes(k)
+  );
+
+  return (
+    <div className="product-card" role="article" aria-label={title}>
+      <div className="product-img">
+        {hasImg ? (
+          <Image src={m.image!} alt={title} width={160} height={110} style={{ width: "100%", height: "100%", objectFit: "cover" }} unoptimized />
+        ) : (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="1.5" strokeLinecap="round">
+            <rect x="3" y="3" width="18" height="18" rx="3" />
+            <path d="M3 9h18M9 21V9" />
+          </svg>
+        )}
+      </div>
+      <div className="product-meta">
+        <p className="product-cat">{category ?? "Product"}</p>
+        <p className="product-name">{title}</p>
+        {price !== undefined && (
+          <p className="product-price">
+            {typeof price === "number" ? (price < 200 ? `$${price}` : `₹${price}`) : price}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Typing indicator ──────────────────────────────────────────────────────────
+function TypingIndicator() {
+  return (
+    <div className="msg-row-ai" role="status" aria-label="Thinking">
+      <div className="ai-avatar">
+        <IconBrandMark />
+      </div>
+      <div className="ai-bubble">
+        <div className="typing">
+          <div className="typing-dot" />
+          <div className="typing-dot" />
+          <div className="typing-dot" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AI message ────────────────────────────────────────────────────────────────
+function AIMessage({ msg }: { msg: Extract<ChatMessage, { role: "assistant" }> }) {
+  if (msg.isLoading) return <TypingIndicator />;
+
+  const hasProducts = (msg.payload?.products?.length ?? 0) > 0;
+  const hasChat = !!(msg.payload?.promptResponse && hasProducts);
+  const hasFormatted = !!msg.payload?.formattedResponse;
+
+  return (
+    <div className="msg-row-ai">
+      <div className="ai-avatar" aria-hidden="true">
+        <IconBrandMark />
+      </div>
+      <div className="ai-bubble">
+        {/* Short chat line */}
+        {hasChat && (
+          <p className="ai-chat-text">{msg.payload!.promptResponse}</p>
+        )}
+
+        {/* Formatted product response */}
+        {hasFormatted && (
+          <div className="ai-formatted">{msg.payload!.formattedResponse}</div>
+        )}
+
+        {/* Product cards */}
+        {hasProducts && (
+          <div>
+            <p className="products-label">Results</p>
+            <div className="products-scroll" role="list">
+              {msg.payload!.products!.map((p, i) => (
+                <div key={`${p.id}-${i}`} role="listitem">
+                  <ProductCard product={p} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Plain text (no payload) */}
+        {!msg.payload && (
+          <p className="ai-plain-text">{msg.content}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "Hi! I’m your shopping assistant. Tell me what you’re looking for and I’ll find the best matches from the catalog.",
+        "Hi. I'm your shopping assistant — describe what you're looking for and I'll find the best matches from our catalog.",
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  async function handleSubmit(e?: FormEvent) {
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  function resizeTextarea(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }
+
+  async function submit(e?: FormEvent, override?: string) {
     e?.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isLoading) return;
+    const text = (override ?? input).trim();
+    if (!text || isLoading) return;
 
-    const userMessage: ChatMessage = { role: "user", content: trimmed };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((p) => [...p, { role: "user", content: text }, { role: "assistant", isLoading: true }]);
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
     setIsLoading(true);
 
     try {
       const res = await fetch("/api/product/get-products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed, history }),
+        body: JSON.stringify({ prompt: text, history }),
       });
-
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      const assistantMessage: ChatMessage = {
+      const reply: ChatMessage = {
         role: "assistant",
         payload: {
           formattedResponse: data.formattedResponse,
           promptResponse: data.promptResponse,
           products: data.products,
         },
-        content:
-          data.formattedResponse ||
-          data.promptResponse ||
-          JSON.stringify(data, null, 2),
+        content: data.formattedResponse ?? data.promptResponse ?? "",
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
-      setHistory((prev) => [
-        ...prev,
-        { role: "user", content: trimmed },
-        {
-          role: "assistant",
-          content:
-            data.promptResponse ||
-            data.formattedResponse 
-        },
+      setMessages((p) => [...p.slice(0, -1), reply]);
+      setHistory((p) => [
+        ...p,
+        { role: "user", content: text },
+        { role: "assistant", content: data.promptResponse ?? data.formattedResponse ?? "" },
       ]);
-    } catch (error) {
-      const fallbackText = "Sorry, something went wrong while fetching products.";
-      const assistantMessage: ChatMessage = {
-        role: "assistant",
-        content: fallbackText,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-      setHistory((prev) => [
-        ...prev,
-        { role: "user", content: trimmed },
-        { role: "assistant", content: fallbackText },
-      ]);
-      console.error(error);
+    } catch {
+      const err = "Something went wrong. Please try again.";
+      setMessages((p) => [...p.slice(0, -1), { role: "assistant", content: err }]);
+      setHistory((p) => [...p, { role: "user", content: text }, { role: "assistant", content: err }]);
     } finally {
       setIsLoading(false);
     }
   }
 
+  const isWelcome = messages.length === 1;
+
   return (
-    <main className="flex min-h-screen w-full bg-zinc-950 text-zinc-50">
-      <section className="flex flex-1 flex-col">
-        {/* Top bar */}
-        <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/80 px-4 py-3 md:px-8">
-          <div>
-            <h1 className="text-sm font-medium text-zinc-100 md:text-base">
-              Chat
-            </h1>
-            <p className="text-xs text-zinc-500">
-              Ask about products, styles, budgets, or anything you want to buy.
-            </p>
+    <>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      <div className="app-layout">
+        {/* ── Sidebar ── */}
+        <aside className="sidebar" role="navigation" aria-label="Sidebar">
+          <div className="sidebar-logo">
+            <div className="sidebar-logo-mark" aria-hidden="true">
+              <IconBrandMark />
+            </div>
+            <span className="sidebar-logo-name">Catalog</span>
           </div>
-          <div className="hidden items-center gap-3 text-xs text-zinc-500 md:flex">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+
+          <button
+            id="new-chat-btn"
+            className="sidebar-new-chat"
+            aria-label="New conversation"
+            onClick={() => {
+              setMessages([{ role: "assistant", content: "Hi. I'm your shopping assistant — describe what you're looking for and I'll find the best matches from our catalog." }]);
+              setHistory([]);
+              setInput("");
+            }}
+          >
+            <IconPlus /> New conversation
+          </button>
+
+          <nav className="sidebar-section" aria-label="Browse categories">
+            <p className="sidebar-section-label">Browse</p>
+            {["Clothing", "Footwear", "Bags", "Beauty", "Accessories"].map((cat) => (
+              <button
+                key={cat}
+                className="sidebar-item"
+                onClick={() => { setInput(cat); textareaRef.current?.focus(); }}
+                aria-label={`Search ${cat}`}
+              >
+                {cat}
+              </button>
+            ))}
+          </nav>
+
+          <div className="sidebar-footer">
+            <div className="status-dot" aria-hidden="true" />
             <span>Assistant online</span>
           </div>
-        </header>
+        </aside>
 
-        {/* Messages */}
-        <div className="flex-1 space-y-6 overflow-y-auto bg-linear-to-b from-zinc-950 to-black px-4 py-6 md:px-8">
-          <div className="mx-auto max-w-2xl space-y-4">
-            {messages.map((m, idx) =>
-              m.role === "assistant" ? (
-                <div key={idx} className="flex gap-3">
-                  <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-xs font-semibold text-emerald-400">
-                    AI
-                  </div>
-                  <div className="w-full space-y-4 rounded-2xl bg-zinc-900/80 px-4 py-3 text-sm text-zinc-100 shadow-sm">
-                    {m.payload?.promptResponse !== undefined && m.payload?.products && m.payload.products.length > 0 && (
-                      <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
-                        <p className="text-xs uppercase tracking-wide text-zinc-500">
-                          Summary
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-100">
-                          {m.payload.promptResponse}
-                        </p>
-                      </div>
-                    )}
+        {/* ── Chat ── */}
+        <main className="chat-main" role="main">
+          {/* Header */}
+          <header className="chat-header">
+            <div>
+              <p className="chat-header-title">Shopping Assistant</p>
+              <p className="chat-header-sub">Fashion &amp; Beauty</p>
+            </div>
+            <div className="header-live" role="status" aria-label="Online">
+              <div className="status-dot" aria-hidden="true" />
+              Online
+            </div>
+          </header>
 
-                    {m.payload?.formattedResponse && (
-                      <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
-                        <p className="text-xs uppercase tracking-wide text-zinc-500">
-                          Product Highlights
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-100">
-                          {m.payload.formattedResponse}
-                        </p>
-                      </div>
-                    )}
+          {/* Messages */}
+          <div className="messages-area" role="log" aria-label="Conversation" aria-live="polite">
+            <div className="messages-inner">
 
-                    {m.payload?.products && m.payload.products.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs uppercase tracking-wide text-zinc-500">
-                          Matches
-                        </p>
-                        {m.payload.products.map((product, productIdx) => {
-                          const metadata =
-                            (product.metadata as Record<string, unknown>) ||
-                            {};
-                          const rawTitle = metadata["title"];
-                          const rawCategory = metadata["category"];
-                          const rawPrice = metadata["price"];
-                          const rawDescription = metadata["description"];
-                          const rawImage = metadata["image"];
-
-                          const title =
-                            typeof rawTitle === "string"
-                              ? rawTitle
-                              : `Product ${product.id ?? ""}`;
-                          const category =
-                            typeof rawCategory === "string"
-                              ? rawCategory
-                              : undefined;
-                          const price =
-                            typeof rawPrice === "number" ||
-                            typeof rawPrice === "string"
-                              ? rawPrice
-                              : undefined;
-                          const description =
-                            typeof rawDescription === "string"
-                              ? rawDescription
-                              : undefined;
-                          const imageSrc =
-                            typeof rawImage === "string" && rawImage.trim().length > 0
-                              ? rawImage
-                              : "/noproduct.png";
-
-                          return (
-                            <div
-                              key={`${product.id}-${productIdx}`}
-                              className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-sm text-zinc-100"
-                            >
-                              <div className="mb-2 overflow-hidden rounded-lg">
-                                <Link href={`/products/${product.id}`}>
-                                  <Image
-                                    src="/noimage.png"
-                                    alt={title}
-                                    width={400}
-                                    height={200}
-                                    className="h-32 w-full object-cover"
-                                    unoptimized
-                                  />
-                                </Link>
-                              </div>
-                              <p className="font-medium text-zinc-50">{title}</p>
-                              {category && (
-                                <p className="text-xs text-zinc-400">
-                                  Category: {category}
-                                </p>
-                              )}
-                              {price !== undefined && (
-                                <p className="text-xs text-zinc-400">
-                                  Price: {price}
-                                </p>
-                              )}
-                              {description && (
-                                <p className="mt-1 text-zinc-300">{description}</p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {!m.payload && (
-                      <p className="whitespace-pre-wrap text-sm text-zinc-100">
-                        {m.content}
-                      </p>
-                    )}
-                  </div>
+              {/* Welcome */}
+              {isWelcome && (
+                <div className="welcome">
+                  <h1 className="welcome-title">What are you looking for?</h1>
+                  <p className="welcome-sub">
+                    Describe any fashion or beauty item and I'll search our catalog for the closest matches.
+                  </p>
                 </div>
-              ) : (
-                <div key={idx} className="flex justify-end">
-                  <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl bg-emerald-500 px-4 py-3 text-sm text-emerald-950 shadow-sm">
-                    {m.content}
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-        </div>
+              )}
 
-        {/* Input */}
-        <form
-          onSubmit={handleSubmit}
-          className="border-t border-zinc-800 bg-zinc-950/90 px-4 py-3 md:px-8"
-        >
-          <div className="mx-auto flex max-w-2xl items-end gap-2">
-            <textarea
-              rows={1}
-              className="h-11 flex-1 resize-none rounded-2xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              placeholder="Describe what you want to buy..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();   // block newline
-                  handleSubmit();       // trigger submit
-                }
-              }}
-            />
-            <button
-              type="submit"
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-emerald-500 px-4 text-sm font-medium text-emerald-950 shadow-md transition hover:bg-emerald-400"
-              disabled={isLoading}
-            >
-              {isLoading ? "Thinking..." : "Send"}
-            </button>
+              {/* Messages */}
+              {messages.map((m, i) =>
+                m.role === "user" ? (
+                  <div key={i} className="msg-row-user">
+                    <div className="user-bubble">{m.content}</div>
+                  </div>
+                ) : (
+                  <AIMessage key={i} msg={m} />
+                )
+              )}
+
+              <div ref={bottomRef} />
+            </div>
           </div>
-          <p className="mx-auto mt-2 max-w-2xl text-[10px] text-zinc-500">
-            Tip: Try “Find a black leather jacket under 5000 for winter” or
-            “Show me budget wireless headphones for travel”.
-          </p>
-        </form>
-      </section>
-    </main>
+
+          {/* Input */}
+          <div className="input-area">
+            <div className="input-inner">
+              {/* Chips */}
+              <div className="chips" role="list" aria-label="Quick searches">
+                {CHIPS.map((c) => (
+                  <button
+                    key={c}
+                    role="listitem"
+                    className="chip"
+                    disabled={isLoading}
+                    onClick={() => submit(undefined, c)}
+                    aria-label={c}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+
+              {/* Form */}
+              <form id="chat-form" onSubmit={submit} aria-label="Send a message">
+                <div className="input-box">
+                  <textarea
+                    ref={textareaRef}
+                    id="chat-input"
+                    className="chat-textarea"
+                    rows={1}
+                    placeholder="Describe what you want to find..."
+                    value={input}
+                    disabled={isLoading}
+                    aria-label="Message"
+                    onChange={(e) => { setInput(e.target.value); resizeTextarea(e.target); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+                    }}
+                  />
+                  <button
+                    id="send-btn"
+                    type="submit"
+                    className="send-btn"
+                    disabled={isLoading || !input.trim()}
+                    aria-label={isLoading ? "Sending" : "Send"}
+                  >
+                    {isLoading ? <IconSpinner /> : <IconSend />}
+                  </button>
+                </div>
+                <div className="input-meta">
+                  <span>Enter to send · Shift+Enter for new line</span>
+                </div>
+              </form>
+            </div>
+          </div>
+        </main>
+      </div>
+    </>
   );
 }

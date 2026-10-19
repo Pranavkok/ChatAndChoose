@@ -1,20 +1,23 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
-  title: "AI ChatBOT",
-  description: "What You Want To BUY",
+  title: "Catalog — Shopping Assistant",
+  description:
+    "Find fashion and beauty products tailored to you. Describe what you want and the AI will search the catalog.",
+  openGraph: {
+    title: "Catalog — Shopping Assistant",
+    description: "AI-powered fashion and beauty product search.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -23,12 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="en" className={inter.variable}>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
